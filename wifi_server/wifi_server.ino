@@ -2,12 +2,13 @@
 
 //**************************************************
 //        SETUP          ///
-char ssid[] = "Pump_Controller";   // Name of the AP
-char pass[] = "password";          // At least 8 characters
+char ssid[] = "Pump_Controller"; // Name of the network
+
+char pass[] = "password"; // Password: at least 8 characters
 
 WiFiServer server(80);
 
-// Define the pump control pin
+// pump control pin
 const int pumpPin = 9;
 
 // Default timing values (in milliseconds)
