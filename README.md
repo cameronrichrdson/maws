@@ -9,5 +9,6 @@ char ssid[] = "Pump_Controller";   // Name of the network
 char pass[] = "password";          // Password: at least 8 characters
 
 Ensure that your board is wired to pin 9. 
+
 const int pumpPin = 9; // pump control pin
 
