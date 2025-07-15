@@ -1,31 +1,33 @@
-#include "WiFiS3.h"
+#include <WiFiS3.h>
 
-char ssid[] = "Pump_Controller";
-char pass[] = "password";
+const char ssid[] = "Pump_Controller";
+const char pass[] = "password";
 WiFiServer server(80);
 
-const int pump1Pin = 3;
-const int pump2Pin = 2;
+// === Pump Configuration ===
+const int pumpPins[] = {2, 3, 4, 5, 6, 7, 8, 9};
+const int numPumps = sizeof(pumpPins) / sizeof(pumpPins[0]);
 const float flowRate = 0.014583;  // mL/ms
 
-// Schedule state for each pump
-unsigned long pump1StartTime = 0;
-unsigned long pump1RunTime = 0;
-bool pump1Scheduled = false;
+struct Pump {
+  bool scheduled = false;
+  unsigned long startTime = 0;
+  unsigned long runTime = 0;
+  int lastDelay = 0;
+  float lastVolume = 0.0;
+};
 
-unsigned long pump2StartTime = 0;
-unsigned long pump2RunTime = 0;
-bool pump2Scheduled = false;
+Pump pumps[numPumps];
 
 void setup() {
   Serial.begin(9600);
-  pinMode(pump1Pin, OUTPUT);
-  pinMode(pump2Pin, OUTPUT);
-  digitalWrite(pump1Pin, LOW);
-  digitalWrite(pump2Pin, LOW);
+  for (int i = 0; i < numPumps; i++) {
+    pinMode(pumpPins[i], OUTPUT);
+    digitalWrite(pumpPins[i], LOW);
+  }
 
   if (!WiFi.beginAP(ssid, pass)) {
-    Serial.println("Failed to start AP");
+    Serial.println("Failed to start access point");
     while (true);
   }
 
@@ -36,127 +38,116 @@ void setup() {
 void loop() {
   unsigned long now = millis();
 
-  // Pump 1 control
-  if (pump1Scheduled && now >= pump1StartTime) {
-    digitalWrite(pump1Pin, HIGH);
-    delay(pump1RunTime);
-    digitalWrite(pump1Pin, LOW);
-    pump1Scheduled = false;
-    Serial.println("Pump 1 completed");
-  }
-
-  // Pump 2 control
-  if (pump2Scheduled && now >= pump2StartTime) {
-    digitalWrite(pump2Pin, HIGH);
-    delay(pump2RunTime);
-    digitalWrite(pump2Pin, LOW);
-    pump2Scheduled = false;
-    Serial.println("Pump 2 completed");
+  // Check each pump
+  for (int i = 0; i < numPumps; i++) {
+    if (pumps[i].scheduled && now >= pumps[i].startTime) {
+      digitalWrite(pumpPins[i], HIGH);
+      delay(pumps[i].runTime);
+      digitalWrite(pumpPins[i], LOW);
+      pumps[i].scheduled = false;
+      Serial.print("Pump ");
+      Serial.print(i + 1);
+      Serial.println(" completed");
+    }
   }
 
   WiFiClient client = server.available();
   if (client) {
-    Serial.println("New client connected");
-    String request = "", currentLine = "";
-    while (client.connected()) {
-      if (client.available()) {
-        char c = client.read();
-        request += c;
-        if (c == '\n') {
-          if (currentLine.length() == 0) {
-            processRequest(request, client);
-            break;
-          } else {
-            currentLine = "";
-          }
-        } else if (c != '\r') {
-          currentLine += c;
-        }
-      }
-    }
-    delay(1);
+    String req = readRequest(client);
+    processRequest(req, client);
     client.stop();
-    Serial.println("Client disconnected");
   }
 }
 
-void processRequest(String req, WiFiClient &client) {
-  Serial.println("Request: ");
+String readRequest(WiFiClient& client) {
+  String request = "";
+  while (client.connected()) {
+    if (client.available()) {
+      char c = client.read();
+      request += c;
+      if (request.endsWith("\r\n\r\n")) break;
+    }
+  }
+
+  // Check for POST body
+  while (client.available()) {
+    request += (char)client.read();
+  }
+  return request;
+}
+
+void processRequest(const String& req, WiFiClient& client) {
+  Serial.println("Incoming request:");
   Serial.println(req);
 
-  // Cancel commands
-  if (req.indexOf("GET /cancel1") != -1) {
-    pump1Scheduled = false;
-  } else if (req.indexOf("GET /cancel2") != -1) {
-    pump2Scheduled = false;
-  }
-
-  // Pump 1 schedule
-  if (req.indexOf("GET /run1") != -1) {
-    int delayMin = getParam(req, "delay").toInt();
-    float volume = getParam(req, "volume").toFloat();
-    if (volume > 0) {
-      pump1RunTime = (unsigned long)(volume / flowRate);
-      pump1StartTime = millis() + delayMin * 60000UL;
-      pump1Scheduled = true;
-      Serial.println("Scheduled Pump 1");
+  // Handle pump cancel
+  if (req.indexOf("POST /cancel") != -1) {
+    int pumpIndex = getParam(req, "pump").toInt();
+    if (pumpIndex >= 0 && pumpIndex < numPumps) {
+      pumps[pumpIndex].scheduled = false;
+      pumps[pumpIndex].lastDelay = 0;
+      pumps[pumpIndex].lastVolume = 0.0;
+      Serial.print("Canceled Pump ");
+      Serial.println(pumpIndex + 1);
     }
   }
 
-  // Pump 2 schedule
-  if (req.indexOf("GET /run2") != -1) {
-    int delayMin = getParam(req, "delay").toInt();
-    float volume = getParam(req, "volume").toFloat();
-    if (volume > 0) {
-      pump2RunTime = (unsigned long)(volume / flowRate);
-      pump2StartTime = millis() + delayMin * 60000UL;
-      pump2Scheduled = true;
-      Serial.println("Scheduled Pump 2");
+  // Handle scheduling
+  if (req.indexOf("POST /run") != -1) {
+    int pumpIndex = getParam(req, "pump").toInt();
+    if (pumpIndex >= 0 && pumpIndex < numPumps) {
+      int delayMin = getParam(req, "delay").toInt();
+      float volume = getParam(req, "volume").toFloat();
+      if (volume > 0) {
+        pumps[pumpIndex].runTime = (unsigned long)(volume / flowRate);
+        pumps[pumpIndex].startTime = millis() + delayMin * 60000UL;
+        pumps[pumpIndex].scheduled = true;
+        pumps[pumpIndex].lastDelay = delayMin;
+        pumps[pumpIndex].lastVolume = volume;
+        Serial.print("Scheduled Pump ");
+        Serial.println(pumpIndex + 1);
+      }
     }
   }
 
-  // Webpage
+  // Build and send response
   client.println("HTTP/1.1 200 OK");
-  client.println("Content-type:text/html\n");
+  client.println("Content-Type: text/html\n");
   client.println("<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
-  client.println("<style>body{font-family:Arial;}form{margin-bottom:20px;}</style></head><body>");
-  client.println("<h2>Dual Pump Scheduler</h2>");
+  client.println("<style>body{font-family:Arial;}form{margin-bottom:20px;}button{margin-top:5px;}</style></head><body>");
+  client.println("<h2>8-Pump Web Scheduler</h2>");
 
-  client.println("<form action=\"/run1\" method=\"GET\">");
-  client.println("<b>Pump 1</b><br>");
-  client.println("Start Delay (min): <input name=\"delay\" type=\"number\" min=\"0\" required><br>");
-  client.println("Volume (mL): <input name=\"volume\" type=\"number\" step=\"any\" min=\"1\" required><br>");
-  client.println("<input type=\"submit\" value=\"Schedule Pump 1\">");
-  if (pump1Scheduled) {
-    client.println(" <a href=\"/cancel1\">Cancel</a>");
-    client.println("<br>Status: Scheduled");
-  } else {
-    client.println("<br>Status: Idle");
-  }
-  client.println("</form>");
+  for (int i = 0; i < numPumps; i++) {
+    client.println("<form method=\"POST\" action=\"/run\">");
+    client.println("<b>Pump " + String(i + 1) + "</b><br>");
+    client.println("<input type=\"hidden\" name=\"pump\" value=\"" + String(i) + "\">");
+    client.println("Start Delay (min): <input name=\"delay\" type=\"number\" min=\"0\" required><br>");
+    client.println("Volume (mL): <input name=\"volume\" type=\"number\" step=\"any\" min=\"1\" required><br>");
+    client.println("<button type=\"submit\">Schedule Pump</button>");
+    client.println("</form>");
 
-  client.println("<form action=\"/run2\" method=\"GET\">");
-  client.println("<b>Pump 2</b><br>");
-  client.println("Start Delay (min): <input name=\"delay\" type=\"number\" min=\"0\" required><br>");
-  client.println("Volume (mL): <input name=\"volume\" type=\"number\" step=\"any\" min=\"1\" required><br>");
-  client.println("<input type=\"submit\" value=\"Schedule Pump 2\">");
-  if (pump2Scheduled) {
-    client.println(" <a href=\"/cancel2\">Cancel</a>");
-    client.println("<br>Status: Scheduled");
-  } else {
-    client.println("<br>Status: Idle");
+    if (pumps[i].scheduled) {
+      client.println("<form method=\"POST\" action=\"/cancel\">");
+      client.println("<input type=\"hidden\" name=\"pump\" value=\"" + String(i) + "\">");
+      client.println("<button type=\"submit\">Cancel Pump " + String(i + 1) + "</button>");
+      client.println("</form>");
+      client.println("Status: Scheduled - Delay: " + String(pumps[i].lastDelay) + 
+                     " min, Volume: " + String(pumps[i].lastVolume, 2) + " mL<br><br>");
+    } else {
+      client.println("Status: Idle<br><br>");
+    }
   }
-  client.println("</form>");
 
   client.println("</body></html>");
 }
 
-String getParam(String req, String key) {
-  int idx = req.indexOf(key + "=");
-  if (idx == -1) return "";
-  int end = req.indexOf('&', idx);
-  if (end == -1) end = req.indexOf(' ', idx);
-  return req.substring(idx + key.length() + 1, end);
+String getParam(const String& req, const String& key) {
+  int keyIndex = req.indexOf(key + "=");
+  if (keyIndex == -1) return "";
+  int valueStart = keyIndex + key.length() + 1;
+  int valueEnd = req.indexOf('&', valueStart);
+  if (valueEnd == -1) valueEnd = req.indexOf('\n', valueStart);
+  return req.substring(valueStart, valueEnd);
 }
 
 void printWifiStatus() {
