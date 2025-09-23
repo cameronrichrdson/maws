@@ -1,46 +1,42 @@
-#include "RTC.h"
+#include <Wire.h>
+#include <DS3231.h>
 #include <SD.h>
 #include <SPI.h>
+#include <SoftwareSerial.h>
 
-const int PIN_ON_INTERRUPT  = D7;
-const int chipSelect = 10; // SD card CS pin
+// === Atlas Scientific RTD Setup ===
+#define RX 2
+#define TX 5
+SoftwareSerial myserial(RX, TX);
 
-bool periodicFlag = false;
-bool alarmFlag = false;
-bool loggingEnabled = true; // Flag to control logging
+String inputstring = "";
+String sensorstring = "";
+boolean sensor_string_complete = false;
+float temperature = NAN;
 
-// Callback function for periodic interrupt
-void periodic_cbk() {
-  periodicFlag = true;
-}
+// === RTC + SD Setup ===
+DS3231 myRTC;
+const int chipSelect = 10;    // SD card CS pin
+bool loggingEnabled = true;   // Control logging
+bool century = false;
+bool h12Flag;
+bool pmFlag;
+bool fileInitialized = false; // To track header creation
 
-// Callback function for alarm interrupt
-void alarm_cbk() {
-  alarmFlag = true;
-}
-
-// Helper function to format numbers with leading zero
+// Helper: format numbers with leading zero
 String twoDigits(int number) {
   return (number < 10 ? "0" : "") + String(number);
 }
 
 void setup() {
   Serial.begin(9600);
-  while (!Serial) {}
+  myserial.begin(9600);
 
-  pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(PIN_ON_INTERRUPT, OUTPUT);
+  inputstring.reserve(10);
+  sensorstring.reserve(30);
 
-  // Initialize the RTC
-  RTC.begin();
-
-  // Set initial time ONLY ONCE if RTC is not running
-  // if (RTC.isRunning()) {
-  //   // Example time: 12 September 2025, 14:52:00
-  //   RTCTime mytime(12, Month::SEPTEMBER, 2025, 16, 56, 0, DayOfWeek::FRIDAY, SaveLight::SAVING_TIME_ACTIVE);
-  //   RTC.setTime(mytime);
-  //   //Serial.println("RTC time set to 12/09/2025 14:52:00");
-  // }
+  Wire.begin();
+  myRTC.setClockMode(false); // Use 24h mode
 
   // Initialize SD card
   if (!SD.begin(chipSelect)) {
@@ -49,56 +45,40 @@ void setup() {
   }
   Serial.println("SD card initialized.");
 
-  // Periodic and alarm callbacks
-  if (!RTC.setPeriodicCallback(periodic_cbk, Period::ONCE_EVERY_2_SEC)) {
-    Serial.println("ERROR: periodic callback not set");
-  }
-
-  RTCTime alarmtime;
-  alarmtime.setSecond(35);
-  AlarmMatch am;
-  am.addMatchSecond();
-
-  if (!RTC.setAlarmCallback(alarm_cbk, alarmtime, am)) {
-    Serial.println("ERROR: alarm callback not set");
-  }
-
   Serial.println("Commands: STOP, START, RESET, SETTIME dd/mm/yyyy hh:mm:ss");
 }
 
 void loop() {
-  static bool status = false;
-  RTCTime currenttime;
-
-  // Check for Serial input
+  // === Handle Serial Commands ===
   if (Serial.available()) {
     String cmd = Serial.readStringUntil('\n');
     cmd.trim();
-
-    // Convert to uppercase for simple command matching
     String cmdUpper = cmd;
     cmdUpper.toUpperCase();
 
     if (cmdUpper == "STOP") {
       loggingEnabled = false;
       Serial.println("Logging stopped.");
-    }
+    } 
     else if (cmdUpper == "START") {
       loggingEnabled = true;
       Serial.println("Logging started.");
-    }
+    } 
     else if (cmdUpper == "RESET") {
-      if (SD.exists("datalog.txt")) {
-        SD.remove("datalog.txt");
-      }
+      if (SD.exists("datalog.txt")) SD.remove("datalog.txt");
       Serial.println("Log file reset.");
-    }
+      fileInitialized = false; // allow header to be re-added
+    } 
     else if (cmdUpper.startsWith("SETTIME")) {
-      // Expected format: SETTIME dd/mm/yyyy hh:mm:ss
       int d, m, y, h, mi, s;
       if (sscanf(cmd.c_str(), "SETTIME %d/%d/%d %d:%d:%d", &d, &m, &y, &h, &mi, &s) == 6) {
-        RTCTime t(d, Month(m), y, h, mi, s, DayOfWeek::FRIDAY, SaveLight::SAVING_TIME_ACTIVE);
-        RTC.setTime(t);
+        myRTC.setClockMode(false); // 24h
+        myRTC.setYear(y - 2000);
+        myRTC.setMonth(m);
+        myRTC.setDate(d);
+        myRTC.setHour(h);
+        myRTC.setMinute(mi);
+        myRTC.setSecond(s);
         Serial.println("RTC updated via Serial.");
       } else {
         Serial.println("Invalid format. Use: SETTIME dd/mm/yyyy hh:mm:ss");
@@ -106,48 +86,70 @@ void loop() {
     }
   }
 
-  if(periodicFlag){
-    Serial.println("PERIODIC INTERRUPT");
-    static bool clb_st = false;
-    digitalWrite(PIN_ON_INTERRUPT, clb_st ? HIGH : LOW);
-    clb_st = !clb_st;
-    periodicFlag = false;
+  // === Handle Atlas Scientific Sensor Input ===
+  if (myserial.available() > 0) {
+    char inchar = (char)myserial.read();
+    sensorstring += inchar;
+    if (inchar == '\r') sensor_string_complete = true;
   }
 
-  if(alarmFlag){
-    Serial.println("ALARM INTERRUPT");
-    alarmFlag = false;
+  if (sensor_string_complete) {
+    if (isdigit(sensorstring[0])) {
+      temperature = sensorstring.toFloat();
+    }
+    sensorstring = "";
+    sensor_string_complete = false;
   }
 
-  // Toggle status every second
-  status = !status;
-  if(status) {
-    RTC.getTime(currenttime);
+  // === Get RTC Time ===
+  int year = myRTC.getYear();
+  int month = myRTC.getMonth(century);
+  int day = myRTC.getDate();
+  int hour = myRTC.getHour(h12Flag, pmFlag);
+  int minute = myRTC.getMinute();
+  int second = myRTC.getSecond();
 
-    // Format the time string with leading zeros
-    String timeStr = String(currenttime.getDayOfMonth()) + "/" +
-                     String(Month2int(currenttime.getMonth())) + "/" +
-                     String(currenttime.getYear()) + " - " +
-                     twoDigits(currenttime.getHour()) + ":" +
-                     twoDigits(currenttime.getMinutes()) + ":" +
-                     twoDigits(currenttime.getSeconds());
+  String timeStr = twoDigits(day) + "/" +
+                   twoDigits(month) + "/" +
+                   String(year + 2000) + "," +
+                   twoDigits(hour) + ":" +
+                   twoDigits(minute) + ":" +
+                   twoDigits(second) + ",";
 
-    Serial.println("Current time: " + timeStr);
+  // === Build log string ===
+  String logStr = timeStr;
+  if (!isnan(temperature)) {
+    logStr +=  String(temperature, 3);
+  } else {
+    logStr += "N/A";
+  }
 
-    // Write time to SD card if logging enabled
-    if (loggingEnabled) {
+  Serial.println(logStr);
+
+  // === Check if file needs header ===
+  if (!fileInitialized) {
+    if (!SD.exists("datalog.txt")) {
       File dataFile = SD.open("datalog.txt", FILE_WRITE);
       if (dataFile) {
-        dataFile.println(timeStr);
+        dataFile.println("Date,Time,Temperature");
         dataFile.close();
+        Serial.println("Log file created with header.");
       } else {
-        Serial.println("Error opening datalog.txt");
+        Serial.println("Error creating datalog.txt");
       }
     }
+    fileInitialized = true; // prevent running every loop
+  }
 
-    digitalWrite(LED_BUILTIN, HIGH);
-  } else {
-    digitalWrite(LED_BUILTIN, LOW);
+  // === Write to SD ===
+  if (loggingEnabled) {
+    File dataFile = SD.open("datalog.txt", FILE_WRITE);
+    if (dataFile) {
+      dataFile.println(logStr);
+      dataFile.close();
+    } else {
+      Serial.println("Error opening datalog.txt");
+    }
   }
 
   delay(1000);
