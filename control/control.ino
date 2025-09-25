@@ -267,27 +267,6 @@ void loop() {
   }
   if (sensor_string_complete) { parseEC(); sensorstring = ""; sensor_string_complete = false; }
 
-  // Log every second
-  static unsigned long lastLog = 0;
-  if (millis() - lastLog >= 1000) {
-    lastLog = millis();
-    int year = myRTC.getYear();
-    int month = myRTC.getMonth(century);
-    int hour = myRTC.getHour(h12Flag, pmFlag);
-    int day = myRTC.getDate();
-    int minute = myRTC.getMinute();
-    int second = myRTC.getSecond();
-    String timeStr = twoDigits(day) + "/" + twoDigits(month) + "/" + String(year + 2000) + "," +
-                     twoDigits(hour) + ":" + twoDigits(minute) + ":" + twoDigits(second);
-    if (loggingEnabled) {
-      File f = SD.open("datalog.txt", FILE_WRITE);
-      if (f) {
-        if (!fileInitialized) { f.println("Date,Time,Temperature,Conductivity"); fileInitialized = true; }
-        f.println(timeStr + "," + String(temperature, 2) + "," + (isnan(conductivity) ? "nan" : String(conductivity, 3)));
-        f.close();
-      }
-    }
-  }
 
   checkPumps();
 
