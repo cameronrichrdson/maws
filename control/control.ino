@@ -55,6 +55,7 @@ struct Pump {
   int scheduledHour = 0;   // RTC hour
   int scheduledMinute = 0; // RTC minute
   float lastVolume = 0.0;  // mL
+  unsigned long lastLogTime = 0;
 };
 Pump pumps[numPumps];
 
@@ -137,8 +138,8 @@ void checkPumps() {
   unsigned long now = millis();
 
   for (int i = 0; i < numPumps; i++) {
+    // Start pump
     if (pumps[i].scheduled && !pumps[i].running) {
-      // Compare RTC time to scheduled time
       if (rtcYear == pumps[i].scheduledYear &&
           rtcMonth == pumps[i].scheduledMonth &&
           rtcDay == pumps[i].scheduledDay &&
@@ -149,20 +150,36 @@ void checkPumps() {
         pumps[i].running = true;
         pumps[i].completed = false;
         pumps[i].stopTime = now + pumps[i].runTime;
+        pumps[i].lastLogTime = 0; // reset log timer
         Serial.print("Pump "); Serial.print(i + 1); Serial.println(" started");
+
+        // Log immediately when starting
+        if (loggingEnabled) logPumpEvent(i, pumps[i].lastVolume);
       }
     }
 
-    if (pumps[i].running && now >= pumps[i].stopTime) {
-      mcp.digitalWrite(pumpPins[i], LOW);
-      pumps[i].running = false;
-      pumps[i].scheduled = false;
-      pumps[i].completed = true;
-      Serial.print("Pump "); Serial.print(i + 1); Serial.println(" completed");
-      if (loggingEnabled) logPumpEvent(i, pumps[i].lastVolume);
+    // Continuous logging every 1 second (or adjust as needed)
+    if (pumps[i].running) {
+      if (now - pumps[i].lastLogTime >= 1000) { // log every 1000 ms
+        if (loggingEnabled) logPumpEvent(i, pumps[i].lastVolume);
+        pumps[i].lastLogTime = now;
+      }
+
+      // Stop pump if done
+      if (now >= pumps[i].stopTime) {
+        mcp.digitalWrite(pumpPins[i], LOW);
+        pumps[i].running = false;
+        pumps[i].scheduled = false;
+        pumps[i].completed = true;
+        Serial.print("Pump "); Serial.print(i + 1); Serial.println(" completed");
+
+        // Final log at completion
+        if (loggingEnabled) logPumpEvent(i, pumps[i].lastVolume);
+      }
     }
   }
 }
+
 
 // ===== Web Helpers =====
 String getParam(const String &req, const String &key) {
