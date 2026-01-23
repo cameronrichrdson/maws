@@ -430,7 +430,6 @@ void loop() {
     sensorstring += c;
     if (c == '\r') sensor_string_complete = true;
   }
-  // if (sensor_string_complete) { parseEC(); sensorstring = ""; sensor_string_complete = false; }
   if (sensor_string_complete) { 
     parseSAL(); 
     sensorstring = ""; 
