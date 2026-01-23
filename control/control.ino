@@ -8,22 +8,58 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
+
+
+// ================================================================================================================================================ //
+// Please configure the following lines of code to your liking. Default values are placed to keep the code working, but check before running
+// Line 23,24 (Wifi network and password)
+// Line 36 (calibration for pump)
+// Line 48 (offset for voltage detection module)
+// ================================================================================================================================================ //
+
+
+
 // ===== Wi-Fi Setup =====
 const char ssid[] = "Pump_Controller";
 const char pass[] = "password";
 WiFiServer server(80);
+// ================================================ //
+
+
 
 // ===== MCP23017 Setup =====
 MCP23017 mcp;
 const int pumpPins[] = {0, 1, 2, 3, 4, 5, 6, 7};
 const int numPumps = sizeof(pumpPins) / sizeof(pumpPins[0]);
-const float flowRate = 0.014583;  // mL/ms
+// ------------------------------------------------- //
+// Check gravimetrically for volume calibration 
+const float flowRate = 0.01385;  
+// ------------------------------------------------ //
+// ================================================ //
+
+
+
+// ===== Voltage sensor Setup =====
+const int VoltageSensor = A1;
+const float R1 = 30000.0;
+const float R2 = 7500.0;
+// ------------------------------------------------ //
+//check using multimeter to see what offset is, by default it is set to 0
+const float voltageCorrection = 0;
+// ------------------------------------------------ //
+float voltage = NAN;
+// ================================================ //
+
+
 
 // ===== Temperature (DS18B20) =====
 #define ONE_WIRE_BUS 8
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
 float temperature = NAN;
+// ================================================ //
+
+
 
 // ===== Atlas EC =====
 #define RX 2
@@ -31,7 +67,10 @@ float temperature = NAN;
 SoftwareSerial myserial(RX, TX);
 String sensorstring = "";
 boolean sensor_string_complete = false;
-float conductivity = NAN;
+float salinity = NAN;
+// ================================================ //
+
+
 
 // ===== RTC + SD =====
 DS3231 myRTC;
@@ -41,6 +80,16 @@ bool century = false;
 bool h12Flag;
 bool pmFlag;
 bool fileInitialized = false;
+
+float readVoltage() {
+  int value = analogRead(VoltageSensor);
+  float vout = (value * 5.0) / 1023.0;
+  float vin = vout / (R2 / (R1 + R2));
+  return vin - voltageCorrection;
+}
+// ================================================ //
+
+
 
 // ===== Pump Structure =====
 struct Pump {
@@ -70,36 +119,50 @@ void logPumpEvent(int pumpID, float volume) {
   int hour = myRTC.getHour(h12Flag, pmFlag);    
   int minute = myRTC.getMinute();
   int second = myRTC.getSecond();
+  voltage = readVoltage();
 
   String timeStr = twoDigits(day) + "/" + twoDigits(month) + "/" + String(year + 2000) + "," +
                    twoDigits(hour) + ":" + twoDigits(minute) + ":" + twoDigits(second);
 
   String logStr = timeStr + "," +
                   String(temperature, 2) + "," +
-                  (isnan(conductivity) ? "nan" : String(conductivity, 3)) + "," +
+                  (isnan(salinity) ? "nan" : String(salinity, 3)) + "," +
                   String(pumpID + 1) + "," +
-                  String(volume, 2);
+                  String(volume, 2) + "," +
+                  String(voltage);
 
   File dataFile = SD.open("datalog.txt", FILE_WRITE);
   if (dataFile) {
     static bool headerWritten = false;
     if (!headerWritten) {
-      dataFile.println("Date,Time,Temperature,Conductivity,Pump,Volume(mL)");
+      dataFile.println("Date,Time,Temperature,Salinity(PSU),Pump,Volume(mL),Voltage(V)");
       headerWritten = true;
     }
     dataFile.println(logStr);
     dataFile.close();
     Serial.println("Pump event logged: " + logStr);
   } else Serial.println("Error opening datalog.txt");
-}
 
-// ===== EC Parser =====
-void parseEC() {
+}
+// ================================================ //
+
+
+
+// ===== salinity Parser =====
+void parseSAL() {
   char arr[30];
   sensorstring.toCharArray(arr, 30);
   char *val = strtok(arr, ",");
-  if (val != NULL) conductivity = atof(val);
+  if (val != NULL) salinity = atof(val);
 }
+// ================================================ //
+
+
+
+
+
+
+
 
 // ===== Pump Functions =====
 void schedulePump(int idx, int year, int month, int day, int hour, int minute, float volume) {
@@ -127,6 +190,9 @@ void stopPump(int idx) {
   pumps[idx].completed = true;
   Serial.print("Pump "); Serial.print(idx + 1); Serial.println(" stopped manually");
 }
+// ================================================ //
+
+
 
 // ===== Check Pump Status =====
 void checkPumps() {
@@ -179,6 +245,8 @@ void checkPumps() {
     }
   }
 }
+// ================================================ //
+
 
 
 // ===== Web Helpers =====
@@ -203,6 +271,9 @@ String readRequest(WiFiClient &client) {
   while (client.available()) request += (char)client.read();
   return request;
 }
+// ================================================ //
+
+
 
 // ===== Process Web Request =====
 void processRequest(String req, WiFiClient &client) {
@@ -299,6 +370,9 @@ void processRequest(String req, WiFiClient &client) {
 
   client.println("</body></html>");
 }
+// ================================================ //
+
+
 
 // ===== Wi-Fi Info =====
 void printWifiStatus() {
@@ -342,6 +416,9 @@ void setup() {
 
   Serial.println("Pump Controller Ready!");
 }
+// ================================================ //
+
+
 
 // ===== Loop =====
 void loop() {
@@ -353,10 +430,19 @@ void loop() {
     sensorstring += c;
     if (c == '\r') sensor_string_complete = true;
   }
-  if (sensor_string_complete) { parseEC(); sensorstring = ""; sensor_string_complete = false; }
+  // if (sensor_string_complete) { parseEC(); sensorstring = ""; sensor_string_complete = false; }
+  if (sensor_string_complete) { 
+    parseSAL(); 
+    sensorstring = ""; 
+    sensor_string_complete = false; 
+  }
+
 
   checkPumps();
 
   WiFiClient client = server.available();
   if (client) { String req = readRequest(client); processRequest(req, client); client.stop(); }
 }
+// ================================================ //
+
+
