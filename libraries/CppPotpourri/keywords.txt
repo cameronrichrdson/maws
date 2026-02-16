@@ -1,0 +1,177 @@
+#########################################
+# Syntax Coloring Map For CppPotpourri
+#########################################
+
+#########################################
+# Datatypes (StringBuilder)
+StringBuilder       KEYWORD1
+
+# Datatypes (FlagContainer)
+FlagContainer8      KEYWORD1
+FlagContainer16     KEYWORD1
+FlagContainer32     KEYWORD1
+
+# Datatypes (TripleAxisPipe)
+TripleAxisTerminalCB KEYWORD1
+
+# Datatypes (SensorFilter)
+SensorFilter        KEYWORD1
+
+# Datatypes (StopWatch)
+StopWatch           KEYWORD1
+
+# Datatypes (ParsingConsole)
+consoleErrCallback  KEYWORD1
+ConsoleCommand      KEYWORD1
+ParsingConsole      KEYWORD1
+TCode               KEYWORD1
+
+# Datatypes (Vector3)
+Vector3             KEYWORD1
+Vector3i16          KEYWORD1
+Vector3ui16         KEYWORD1
+Vector3i            KEYWORD1
+Vector3ui           KEYWORD1
+Vector3l            KEYWORD1
+Vector3ul           KEYWORD1
+Vector3f            KEYWORD1
+Vector3f64          KEYWORD1
+
+# Datatypes (UUID)
+UUID                KEYWORD1
+
+# Datatypes (Battery)
+BatteryOpts          KEYWORD1
+BatteryStateCallback KEYWORD1
+
+
+#########################################
+# Methods and Functions (StringBuilder)
+length             KEYWORD2
+prepend            KEYWORD2
+string             KEYWORD2
+concat             KEYWORD2
+concatHandoff      KEYWORD2
+prependHandoff     KEYWORD2
+concatf            KEYWORD2
+cull               KEYWORD2
+trim               KEYWORD2
+clear              KEYWORD2
+chunk              KEYWORD2
+split              KEYWORD2
+implode            KEYWORD2
+count              KEYWORD2
+position           KEYWORD2
+position_trimmed   KEYWORD2
+position_as_int    KEYWORD2
+position_as_double KEYWORD2
+drop_position      KEYWORD2
+contains           KEYWORD2
+cmpBinString       KEYWORD2
+printDebug         KEYWORD2
+printBuffer        KEYWORD2
+strcasestr         KEYWORD2
+
+# Methods and Functions (TripleAxisPipe)
+pushVector         KEYWORD2
+printPipe          KEYWORD2
+spatialSenseStr    KEYWORD2
+
+# Methods and Functions (SensorFilter)
+feedFilter         KEYWORD2
+purge              KEYWORD2
+getParam0          KEYWORD2
+getParam1          KEYWORD2
+setParam0          KEYWORD2
+setParam1          KEYWORD2
+strategy           KEYWORD2
+printFilter        KEYWORD2
+setStrategy        KEYWORD2
+stdevValue         KEYWORD2
+rmsValue           KEYWORD2
+getFilterStr       KEYWORD2
+
+# Methods and Functions (ParsingConsole)
+pushBuffer      KEYWORD2
+fetchLog           KEYWORD2
+printToLog         KEYWORD2
+printHelp          KEYWORD2
+printHistory       KEYWORD2
+defineCommand      KEYWORD2
+errorCallback      KEYWORD2
+clearHistory       KEYWORD2
+maxHistoryDepth    KEYWORD2
+historyDepth       KEYWORD2
+logLength          KEYWORD2
+setTXTerminator    KEYWORD2
+setRXTerminator    KEYWORD2
+getTXTerminator    KEYWORD2
+getRXTerminator    KEYWORD2
+localEcho          KEYWORD2
+forceReturn        KEYWORD2
+emitPrompt         KEYWORD2
+historyFail        KEYWORD2
+hasColor           KEYWORD2
+errToStr           KEYWORD2
+typecodeToStr      KEYWORD2
+
+# Methods and Functions (StopWatch)
+bestTime           KEYWORD2
+lastTime           KEYWORD2
+worstTime          KEYWORD2
+meanTime           KEYWORD2
+totalTime          KEYWORD2
+executions         KEYWORD2
+markStart          KEYWORD2
+markStop           KEYWORD2
+reset              KEYWORD2
+printDebug         KEYWORD2
+printDebugHeader   KEYWORD2
+
+# Methods and Functions (Vector3)
+normalize          KEYWORD2
+normalized         KEYWORD2
+reflect            KEYWORD2
+project            KEYWORD2
+projected          KEYWORD2
+angle              KEYWORD2
+angle_normalized   KEYWORD2
+
+# Methods and Functions (UUID)
+uuid_from_str      KEYWORD2
+uuid_to_str        KEYWORD2
+uuid_to_sb         KEYWORD2
+uuid_gen           KEYWORD2
+uuid_compare       KEYWORD2
+uuid_copy          KEYWORD2
+
+# Methods and Functions (Battery)
+batteryStateStr    KEYWORD2
+
+
+#########################################
+# Constants (SensorFilter)
+FilteringStrategy  LITERAL1
+
+# Constants (TripleAxisPipe)
+SpatialSense       LITERAL1
+
+# Constants (ParsingConsole)
+LineTerm           LITERAL1
+ConsoleErr         LITERAL1
+tcodes_0           LITERAL1
+tcodes_uint_1      LITERAL1
+tcodes_uint_2      LITERAL1
+tcodes_uint_3      LITERAL1
+tcodes_uint_4      LITERAL1
+tcodes_str_1       LITERAL1
+tcodes_str_2       LITERAL1
+tcodes_str_3       LITERAL1
+tcodes_str_4       LITERAL1
+tcodes_float_1     LITERAL1
+
+# Constants (Vector3)
+
+# Constants (Battery)
+BatteryChemistry   LITERAL1
+ChargeState        LITERAL1
